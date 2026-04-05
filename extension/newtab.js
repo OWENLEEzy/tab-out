@@ -69,6 +69,10 @@ window.addEventListener('message', async (event) => {
       // Focus a single specific tab by exact URL match
       response = await handleFocusSingleTab(msg.url);
 
+    } else if (action === 'closeDuplicates') {
+      // Close duplicate tabs — either all copies or keep one of each
+      response = await handleCloseDuplicates(msg.urls, msg.keepOne);
+
     } else {
       response = { error: `Unknown action: ${action}` };
     }
@@ -211,4 +215,37 @@ async function handleFocusSingleTab(url) {
   await chrome.tabs.update(match.id, { active: true });
   await chrome.windows.update(match.windowId, { focused: true });
   return { focusedTabId: match.id };
+}
+
+/**
+ * closeDuplicates — Closes duplicate tabs for the given URLs.
+ *
+ * @param {string[]} urls  — URLs that have duplicates
+ * @param {boolean} keepOne — if true, keep one copy of each; if false, close all copies
+ */
+async function handleCloseDuplicates(urls = [], keepOne = true) {
+  const allTabs = await chrome.tabs.query({});
+  const tabIdsToClose = [];
+
+  for (const url of urls) {
+    // Find all tabs with this exact URL
+    const matching = allTabs.filter(t => t.url === url);
+
+    if (keepOne) {
+      // Keep the first one (or the active one if any), close the rest
+      const keep = matching.find(t => t.active) || matching[0];
+      for (const tab of matching) {
+        if (tab.id !== keep.id) tabIdsToClose.push(tab.id);
+      }
+    } else {
+      // Close all copies
+      for (const tab of matching) tabIdsToClose.push(tab.id);
+    }
+  }
+
+  if (tabIdsToClose.length > 0) {
+    await chrome.tabs.remove(tabIdsToClose);
+  }
+
+  return { closedCount: tabIdsToClose.length };
 }

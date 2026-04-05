@@ -126,52 +126,46 @@ async function focusTabsByUrls(urls) {
 /**
  * playCloseSound()
  *
- * Plays a short, satisfying "swoosh-pop" sound when tabs are closed.
+ * Plays a clean "swoosh" sound when tabs are closed.
  * Built entirely with the Web Audio API — no sound files needed.
- * Think of it like the sound of sliding a card off a desk.
+ * A filtered noise sweep that descends in pitch, like air moving.
  */
 function playCloseSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = ctx.currentTime;
 
-    // Layer 1: a quick descending "swoosh" — white noise through a bandpass filter
-    const noiseLen = 0.15;
-    const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * noiseLen, ctx.sampleRate);
-    const noiseData = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < noiseData.length; i++) {
-      noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseData.length); // fades out
+    // Swoosh: shaped white noise through a sweeping bandpass filter
+    const duration = 0.25;
+    const buffer = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    // Generate noise with a natural envelope (quick attack, smooth decay)
+    for (let i = 0; i < data.length; i++) {
+      const pos = i / data.length;
+      // Envelope: ramps up fast in first 10%, then fades out smoothly
+      const env = pos < 0.1 ? pos / 0.1 : Math.pow(1 - (pos - 0.1) / 0.9, 1.5);
+      data[i] = (Math.random() * 2 - 1) * env;
     }
-    const noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = noiseBuffer;
 
-    const bandpass = ctx.createBiquadFilter();
-    bandpass.type = 'bandpass';
-    bandpass.frequency.setValueAtTime(3000, ctx.currentTime);
-    bandpass.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + noiseLen);
-    bandpass.Q.value = 1.5;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
 
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.08, ctx.currentTime);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + noiseLen);
+    // Bandpass filter sweeps from high to low — this creates the "swoosh" character
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 2.0;
+    filter.frequency.setValueAtTime(4000, t);
+    filter.frequency.exponentialRampToValueAtTime(400, t + duration);
 
-    noiseSource.connect(bandpass).connect(noiseGain).connect(ctx.destination);
-    noiseSource.start(ctx.currentTime);
+    // Volume
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.15, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
 
-    // Layer 2: a soft "pop" — short sine wave with quick pitch drop
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(600, ctx.currentTime + 0.05);
-    osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.2);
+    source.connect(filter).connect(gain).connect(ctx.destination);
+    source.start(t);
 
-    const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.12, ctx.currentTime + 0.05);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-
-    osc.connect(oscGain).connect(ctx.destination);
-    osc.start(ctx.currentTime + 0.05);
-    osc.stop(ctx.currentTime + 0.25);
-
-    // Clean up the audio context after sounds finish
     setTimeout(() => ctx.close(), 500);
   } catch {
     // Audio not supported — fail silently
@@ -621,23 +615,41 @@ async function renderDashboard() {
     if (!dupeSection) {
       dupeSection = document.createElement('div');
       dupeSection.id = 'duplicatesBanner';
-      dupeSection.className = 'nudge-banner';
-      dupeSection.style.borderColor = 'rgba(200, 113, 58, 0.2)';
-      dupeSection.style.background = 'linear-gradient(135deg, rgba(200, 113, 58, 0.04), rgba(200, 113, 58, 0.08))';
       const openTabsEl = document.getElementById('openTabsSection');
       if (openTabsEl) openTabsEl.after(dupeSection);
     }
     const totalDupes = duplicateTabs.reduce((s, d) => s + d.count - 1, 0);
-    dupeSection.style.display = 'flex';
+    dupeSection.style.display = 'block';
     dupeSection.innerHTML = `
-      <div class="nudge-icon" style="background: rgba(200, 113, 58, 0.1);">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="var(--accent-amber)" style="width:18px;height:18px">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.5a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
-        </svg>
-      </div>
-      <div class="nudge-text">
-        <strong>${totalDupes} duplicate tab${totalDupes !== 1 ? 's' : ''}</strong> — you have the same page open multiple times:
-        ${duplicateTabs.map(d => `<span class="page-chip" style="margin-top:6px;display:inline-block">${(d.title || d.url).slice(0, 45)} (${d.count}x)</span>`).join(' ')}
+      <div class="mission-card" style="border-color: rgba(200, 113, 58, 0.25); background: rgba(200, 113, 58, 0.03);">
+        <div class="status-bar" style="background: var(--accent-amber);"></div>
+        <div class="mission-content">
+          <div class="mission-top">
+            <span class="mission-name">${totalDupes} duplicate tab${totalDupes !== 1 ? 's' : ''}</span>
+            <span class="mission-tag" style="color: var(--accent-amber); background: rgba(200, 113, 58, 0.08);">Duplicates</span>
+          </div>
+          <div class="mission-summary">You have the same page open in multiple tabs.</div>
+          <div class="mission-pages" style="margin-bottom: 4px;">
+            ${duplicateTabs.map(d => {
+              const label = (d.title || d.url);
+              const display = label.length > 40 ? label.slice(0, 40) + '...' : label;
+              return `<span class="page-chip">${display} (${d.count}x)</span>`;
+            }).join('')}
+          </div>
+          <div class="actions">
+            <button class="action-btn close-tabs" data-action="close-all-dupes">
+              ${ICONS.close}
+              Close all duplicates
+            </button>
+            <button class="action-btn" data-action="dedup-keep-one">
+              Keep one copy each
+            </button>
+          </div>
+        </div>
+        <div class="mission-meta">
+          <div class="mission-page-count">${totalDupes}</div>
+          <div class="mission-page-label">extra</div>
+        </div>
       </div>
     `;
   } else if (dupeSection) {
@@ -784,6 +796,40 @@ document.addEventListener('click', async (e) => {
     if (tabUrl) {
       await sendToExtension('focusTab', { url: tabUrl });
     }
+    return;
+  }
+
+  // ---- close-all-dupes: close every duplicate tab ----
+  if (action === 'close-all-dupes') {
+    const urls = duplicateTabs.map(d => d.url);
+    await sendToExtension('closeDuplicates', { urls, keepOne: false });
+    playCloseSound();
+    const banner = document.getElementById('duplicatesBanner');
+    if (banner) {
+      banner.querySelector('.mission-card').classList.add('closing');
+      setTimeout(() => { banner.style.display = 'none'; }, 500);
+    }
+    await fetchOpenTabs();
+    const closed = duplicateTabs.reduce((s, d) => s + d.count, 0);
+    duplicateTabs = [];
+    showToast(`Closed all ${closed} duplicate tabs`);
+    return;
+  }
+
+  // ---- dedup-keep-one: close extras but keep one copy of each ----
+  if (action === 'dedup-keep-one') {
+    const urls = duplicateTabs.map(d => d.url);
+    await sendToExtension('closeDuplicates', { urls, keepOne: true });
+    playCloseSound();
+    const banner = document.getElementById('duplicatesBanner');
+    if (banner) {
+      banner.querySelector('.mission-card').classList.add('closing');
+      setTimeout(() => { banner.style.display = 'none'; }, 500);
+    }
+    await fetchOpenTabs();
+    const closed = duplicateTabs.reduce((s, d) => s + d.count - 1, 0);
+    duplicateTabs = [];
+    showToast(`Closed ${closed} extra tab${closed !== 1 ? 's' : ''}, kept one copy each`);
     return;
   }
 
