@@ -887,7 +887,7 @@ function renderDomainCard(group, groupIndex) {
     try {
       const parsed = new URL(tab.url);
       if (parsed.hostname === 'localhost' && parsed.port) {
-        label = `:${parsed.port} ${label}`;
+        label = `${parsed.port} ${label}`;
       }
     } catch {}
     const count   = urlCounts[tab.url];
