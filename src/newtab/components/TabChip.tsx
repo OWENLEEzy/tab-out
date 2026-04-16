@@ -1,0 +1,200 @@
+import React, { useCallback } from 'react';
+import { getFaviconUrl, getHostname, sanitizeUrl } from '../../utils/url';
+import {
+  cleanTitle,
+  smartTitle,
+  stripTitleNoise,
+} from '../../lib/title-cleaner';
+
+// ─── Types ────────────────────────────────────────────────────────────
+
+interface TabChipProps {
+  url: string;
+  title: string;
+  duplicateCount: number;
+  onFocus: (url: string) => void;
+  onClose: (url: string, title: string) => void;
+  onSave: (url: string, title: string) => void;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Build the display label for a tab chip.
+ * Applies noise stripping, smart title generation, and site-name cleanup.
+ * For localhost URLs with a port, prepends the port number.
+ */
+function buildLabel(rawTitle: string, url: string): string {
+  const label = cleanTitle(
+    smartTitle(stripTitleNoise(rawTitle || ''), url),
+    getHostname(url),
+  );
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'localhost' && parsed.port) {
+      return `${parsed.port} ${label}`;
+    }
+  } catch {
+    // Invalid URL — return label as-is
+  }
+
+  return label;
+}
+
+// ─── SVG Icons ────────────────────────────────────────────────────────
+
+function BookmarkIcon(): React.ReactElement {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      stroke="currentColor"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z"
+      />
+    </svg>
+  );
+}
+
+function CloseIcon(): React.ReactElement {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={2.5}
+      stroke="currentColor"
+      className="h-3.5 w-3.5"
+      aria-hidden="true"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M6 18 18 6M6 6l12 12"
+      />
+    </svg>
+  );
+}
+
+// ─── Component ────────────────────────────────────────────────────────
+
+export function TabChip({
+  url,
+  title,
+  duplicateCount,
+  onFocus,
+  onClose,
+  onSave,
+}: TabChipProps): React.ReactElement {
+  const hostname = getHostname(url);
+  const faviconUrl = getFaviconUrl(hostname);
+  const displayLabel = buildLabel(title, url);
+  const safeUrl = sanitizeUrl(url);
+
+  const handleClick = useCallback(() => {
+    onFocus(url);
+  }, [onFocus, url]);
+
+  const handleClose = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onClose(url, title);
+    },
+    [onClose, url, title],
+  );
+
+  const handleSave = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onSave(url, title);
+    },
+    [onSave, url, title],
+  );
+
+  const handleImageError = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const target = e.currentTarget;
+      target.style.display = 'none';
+    },
+    [],
+  );
+
+  const chipClasses = [
+    'group flex items-center gap-2 rounded-chip px-2.5 py-1.5',
+    'cursor-pointer transition-colors duration-150',
+    'hover:bg-surface-light dark:hover:bg-surface-dark',
+    'focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none',
+    duplicateCount > 1 ? 'ring-1 ring-accent-amber/30' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <div
+      className={chipClasses}
+      data-tab-url={safeUrl}
+      title={displayLabel}
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+    >
+      {/* Favicon */}
+      {faviconUrl && (
+        <img
+          className="h-4 w-4 shrink-0"
+          src={faviconUrl}
+          alt=""
+          onError={handleImageError}
+        />
+      )}
+
+      {/* Title */}
+      <span className="truncate text-sm text-text-primary-light dark:text-text-primary-dark font-body">
+        {displayLabel}
+      </span>
+
+      {/* Duplicate badge */}
+      {duplicateCount > 1 && (
+        <span className="shrink-0 text-xs text-accent-amber font-body font-medium">
+          ({duplicateCount}x)
+        </span>
+      )}
+
+      {/* Action buttons — visible on hover */}
+      <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <button
+          type="button"
+          className="rounded-chip p-1 text-text-secondary transition-colors duration-150 hover:text-accent-blue hover:bg-accent-blue/10 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+          onClick={handleSave}
+          title="Save for later"
+          aria-label={`Save ${displayLabel} for later`}
+        >
+          <BookmarkIcon />
+        </button>
+        <button
+          type="button"
+          className="rounded-chip p-1 text-text-secondary transition-colors duration-150 hover:text-accent-red hover:bg-accent-red/10 focus-visible:ring-2 focus-visible:ring-accent-red/40 focus-visible:outline-none"
+          onClick={handleClose}
+          title="Close this tab"
+          aria-label={`Close ${displayLabel}`}
+        >
+          <CloseIcon />
+        </button>
+      </div>
+    </div>
+  );
+}

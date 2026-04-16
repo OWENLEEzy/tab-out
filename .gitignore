@@ -1,8 +1,15 @@
-node_modules/
+node_modules
+dist
+dist-zip
+*.local
 *.log
-*.db
 .DS_Store
 docs/superpowers/
+
+# Build artifacts
+*.crx
+*.pem
+*.zip
 
 # Personal config (landing page patterns, etc.) — never push to GitHub
 extension/config.local.js
