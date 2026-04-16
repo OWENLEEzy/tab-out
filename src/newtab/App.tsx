@@ -17,6 +17,7 @@ import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { useTabStore } from '../stores/tab-store';
 import { useSavedStore } from '../stores/saved-store';
+import { useSettingsStore } from '../stores/settings-store';
 import { useChromeStorage } from './hooks/useChromeStorage';
 import { useKeyboard } from './hooks/useKeyboard';
 import { shootConfetti } from '../lib/confetti';
@@ -49,9 +50,11 @@ export function App(): React.ReactElement {
   // ─── Stores ────────────────────────────────────────────────────────
   const tabStore = useTabStore();
   const savedStore = useSavedStore();
+  const settingsStore = useSettingsStore();
 
   const { tabs, groups, loading: tabsLoading } = tabStore;
   const { active: savedActive, archived: savedArchived, archiveSearch } = savedStore;
+  const { settings } = settingsStore;
 
   // ─── Toast helper ──────────────────────────────────────────────────
 
@@ -67,21 +70,36 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const applyTheme = (dark: boolean) => {
-      document.documentElement.classList.toggle('dark', dark);
+    const applyTheme = () => {
+      const { theme } = useSettingsStore.getState().settings;
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.toggle('dark', mq.matches);
+      }
     };
-    applyTheme(mq.matches);
-    mq.addEventListener('change', (e) => applyTheme(e.matches));
-    return () => mq.removeEventListener('change', (e) => applyTheme(e.matches));
+
+    applyTheme();
+    mq.addEventListener('change', applyTheme);
+
+    // Re-apply when settings change
+    const unsub = useSettingsStore.subscribe(applyTheme);
+
+    return () => {
+      mq.removeEventListener('change', applyTheme);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
     async function init() {
-      await Promise.all([tabStore.fetchTabs(), savedStore.fetchSaved()]);
+      await Promise.all([tabStore.fetchTabs(), savedStore.fetchSaved(), settingsStore.fetchSettings()]);
       setLoading(false);
     }
     init();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps — store selectors are stable
 
   // ─── Real-time tab listeners ───────────────────────────────────────
 
@@ -366,6 +384,7 @@ export function App(): React.ReactElement {
                       <SortableDomainCard
                         key={group.domain}
                         group={group}
+                        maxChipsVisible={settings.maxChipsVisible}
                         onCloseDomain={handleCloseDomain}
                         onCloseDuplicates={handleCloseDuplicates}
                         onCloseTab={handleCloseTab}
@@ -436,10 +455,12 @@ export function App(): React.ReactElement {
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        soundEnabled={true}
-        confettiEnabled={true}
-        onToggleSound={() => {}}
-        onToggleConfetti={() => {}}
+        theme={settings.theme}
+        soundEnabled={settings.soundEnabled}
+        confettiEnabled={settings.confettiEnabled}
+        onSetTheme={settingsStore.setTheme}
+        onToggleSound={settingsStore.toggleSound}
+        onToggleConfetti={settingsStore.toggleConfetti}
       />
 
       {/* Toast overlay */}

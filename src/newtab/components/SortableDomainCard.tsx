@@ -8,6 +8,7 @@ import type { TabGroup } from '../../types';
 
 interface SortableDomainCardProps {
   group: TabGroup;
+  maxChipsVisible?: number;
   onCloseDomain: (group: TabGroup) => void;
   onCloseDuplicates: (urls: string[]) => void;
   onCloseTab: (url: string) => void;
@@ -19,6 +20,7 @@ interface SortableDomainCardProps {
 
 export function SortableDomainCard({
   group,
+  maxChipsVisible,
   onCloseDomain,
   onCloseDuplicates,
   onCloseTab,
@@ -45,6 +47,7 @@ export function SortableDomainCard({
       <DomainCard
         group={group}
         dragHandleProps={listeners}
+        maxChipsVisible={maxChipsVisible}
         onCloseDomain={onCloseDomain}
         onCloseDuplicates={onCloseDuplicates}
         onCloseTab={onCloseTab}

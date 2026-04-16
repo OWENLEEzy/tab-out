@@ -15,7 +15,7 @@ function queuedWrite(fn: () => Promise<void>): Promise<void> {
   return task;
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   soundEnabled: true,
   confettiEnabled: true,
@@ -201,9 +201,8 @@ export async function writeSettings(
  * Persist custom group ordering from drag-and-drop.
  */
 export async function writeGroupOrder(order: Record<string, number>): Promise<void> {
-  await queuedWrite(async () => {
-    await chrome.storage.local.set({ groupOrder: order });
-  });
+  const storage = await readStorage();
+  await writeStorage({ ...storage, groupOrder: order });
 }
 
 // Export for testing

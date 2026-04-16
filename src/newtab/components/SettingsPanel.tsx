@@ -5,8 +5,10 @@ import React, { useCallback, useEffect, useRef } from 'react';
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
+  theme: 'light' | 'dark' | 'system';
   soundEnabled: boolean;
   confettiEnabled: boolean;
+  onSetTheme: (theme: 'light' | 'dark' | 'system') => void;
   onToggleSound: () => void;
   onToggleConfetti: () => void;
 }
@@ -16,8 +18,10 @@ interface SettingsPanelProps {
 export function SettingsPanel({
   open,
   onClose,
+  theme,
   soundEnabled,
   confettiEnabled,
+  onSetTheme,
   onToggleSound,
   onToggleConfetti,
 }: SettingsPanelProps): React.ReactElement | null {
@@ -94,6 +98,7 @@ export function SettingsPanel({
 
         {/* Toggles */}
         <div className="flex flex-col gap-4">
+          <ThemeRow value={theme} onChange={onSetTheme} />
           <ToggleRow
             id="setting-sound"
             label="Sound effects"
@@ -107,6 +112,45 @@ export function SettingsPanel({
             onChange={onToggleConfetti}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Theme selector sub-component ────────────────────────────────────
+
+interface ThemeRowProps {
+  value: 'light' | 'dark' | 'system';
+  onChange: (theme: 'light' | 'dark' | 'system') => void;
+}
+
+const THEME_OPTIONS: { value: 'light' | 'dark' | 'system'; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+function ThemeRow({ value, onChange }: ThemeRowProps): React.ReactElement {
+  return (
+    <div className="flex items-center justify-between">
+      <label className="text-sm font-body text-text-primary-light dark:text-text-primary-dark">
+        Theme
+      </label>
+      <div className="inline-flex rounded-chip border border-border-light dark:border-border-dark overflow-hidden">
+        {THEME_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`px-3 py-1 text-xs font-body transition-colors ${
+              value === opt.value
+                ? 'bg-accent-sage text-white'
+                : 'text-text-secondary hover:bg-surface-light dark:hover:bg-surface-dark'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
     </div>
   );

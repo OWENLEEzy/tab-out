@@ -1,17 +1,6 @@
 import { create } from 'zustand';
 import type { AppSettings, CustomGroup } from '../types';
-import { readStorage, writeStorage } from '../utils/storage';
-
-// ─── Default Settings ────────────────────────────────────────────────
-
-const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'system',
-  soundEnabled: true,
-  confettiEnabled: true,
-  maxChipsVisible: 8,
-  customGroups: [],
-  landingPagePatterns: [],
-};
+import { readStorage, writeStorage, DEFAULT_SETTINGS } from '../utils/storage';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -52,48 +41,68 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   toggleSound: async () => {
-    const { settings } = get();
-    const updated: AppSettings = { ...settings, soundEnabled: !settings.soundEnabled };
+    const { settings: prev } = get();
+    const updated: AppSettings = { ...prev, soundEnabled: !prev.soundEnabled };
     set({ settings: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, settings: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, settings: updated });
+    } catch {
+      set({ settings: prev });
+    }
   },
 
   toggleConfetti: async () => {
-    const { settings } = get();
-    const updated: AppSettings = { ...settings, confettiEnabled: !settings.confettiEnabled };
+    const { settings: prev } = get();
+    const updated: AppSettings = { ...prev, confettiEnabled: !prev.confettiEnabled };
     set({ settings: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, settings: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, settings: updated });
+    } catch {
+      set({ settings: prev });
+    }
   },
 
   setTheme: async (theme: 'light' | 'dark' | 'system') => {
-    const { settings } = get();
-    const updated: AppSettings = { ...settings, theme };
+    const { settings: prev } = get();
+    const updated: AppSettings = { ...prev, theme };
     set({ settings: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, settings: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, settings: updated });
+    } catch {
+      set({ settings: prev });
+    }
   },
 
   addCustomGroup: async (group: CustomGroup) => {
-    const { settings } = get();
+    const { settings: prev } = get();
     const updated: AppSettings = {
-      ...settings,
-      customGroups: [...settings.customGroups, group],
+      ...prev,
+      customGroups: [...prev.customGroups, group],
     };
     set({ settings: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, settings: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, settings: updated });
+    } catch {
+      set({ settings: prev });
+    }
   },
 
   removeCustomGroup: async (groupKey: string) => {
-    const { settings } = get();
+    const { settings: prev } = get();
     const updated: AppSettings = {
-      ...settings,
-      customGroups: settings.customGroups.filter((g) => g.groupKey !== groupKey),
+      ...prev,
+      customGroups: prev.customGroups.filter((g) => g.groupKey !== groupKey),
     };
     set({ settings: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, settings: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, settings: updated });
+    } catch {
+      set({ settings: prev });
+    }
   },
 }));

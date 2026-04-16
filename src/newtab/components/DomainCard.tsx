@@ -7,6 +7,7 @@ import { TabChip } from './TabChip';
 interface DomainCardProps {
   group: TabGroup;
   dragHandleProps?: Record<string, unknown>;
+  maxChipsVisible?: number;
   onCloseDomain: (group: TabGroup) => void;
   onCloseDuplicates: (urls: string[]) => void;
   onCloseTab: (url: string) => void;
@@ -16,7 +17,7 @@ interface DomainCardProps {
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-const MAX_VISIBLE_CHIPS = 8;
+const DEFAULT_MAX_CHIPS = 8;
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ function DedupIcon(): React.ReactElement {
 export function DomainCard({
   group,
   dragHandleProps,
+  maxChipsVisible = DEFAULT_MAX_CHIPS,
   onCloseDomain,
   onCloseDuplicates,
   onCloseTab,
@@ -120,8 +122,8 @@ export function DomainCard({
     });
   }, [tabs]);
 
-  const visibleTabs = uniqueTabs.slice(0, MAX_VISIBLE_CHIPS);
-  const hiddenTabs = uniqueTabs.slice(MAX_VISIBLE_CHIPS);
+  const visibleTabs = uniqueTabs.slice(0, maxChipsVisible);
+  const hiddenTabs = uniqueTabs.slice(maxChipsVisible);
   const extraCount = hiddenTabs.length;
 
   // ─── Handlers ────────────────────────────────────────────────────────

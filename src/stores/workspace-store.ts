@@ -47,7 +47,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   createWorkspace: async (name: string, icon: string) => {
-    const { workspaces } = get();
+    const { workspaces: prev } = get();
     const now = Date.now();
     const workspace: Workspace = {
       id: crypto.randomUUID(),
@@ -56,47 +56,63 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       savedTabs: [],
       createdAt: now,
       updatedAt: now,
-      order: workspaces.length,
+      order: prev.length,
     };
-    const updated = [...workspaces, workspace];
+    const updated = [...prev, workspace];
     set({ workspaces: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, workspaces: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, workspaces: updated });
+    } catch {
+      set({ workspaces: prev });
+    }
   },
 
   deleteWorkspace: async (id: string) => {
-    const { workspaces } = get();
-    const updated = workspaces.filter((w) => w.id !== id);
+    const { workspaces: prev } = get();
+    const updated = prev.filter((w) => w.id !== id);
     set({ workspaces: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, workspaces: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, workspaces: updated });
+    } catch {
+      set({ workspaces: prev });
+    }
   },
 
   renameWorkspace: async (id: string, name: string) => {
-    const { workspaces } = get();
-    const updated = workspaces.map((w) =>
+    const { workspaces: prev } = get();
+    const updated = prev.map((w) =>
       w.id === id ? { ...w, name, updatedAt: Date.now() } : w
     );
     set({ workspaces: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, workspaces: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, workspaces: updated });
+    } catch {
+      set({ workspaces: prev });
+    }
   },
 
   addTabToWorkspace: async (workspaceId: string, tab: SavedTab) => {
-    const { workspaces } = get();
-    const updated = workspaces.map((w) =>
+    const { workspaces: prev } = get();
+    const updated = prev.map((w) =>
       w.id === workspaceId
         ? { ...w, savedTabs: [...w.savedTabs, tab], updatedAt: Date.now() }
         : w
     );
     set({ workspaces: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, workspaces: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, workspaces: updated });
+    } catch {
+      set({ workspaces: prev });
+    }
   },
 
   removeTabFromWorkspace: async (workspaceId: string, tabId: string) => {
-    const { workspaces } = get();
-    const updated = workspaces.map((w) =>
+    const { workspaces: prev } = get();
+    const updated = prev.map((w) =>
       w.id === workspaceId
         ? {
             ...w,
@@ -106,8 +122,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         : w
     );
     set({ workspaces: updated });
-    const storage = await readStorage();
-    await writeStorage({ ...storage, workspaces: updated });
+    try {
+      const storage = await readStorage();
+      await writeStorage({ ...storage, workspaces: updated });
+    } catch {
+      set({ workspaces: prev });
+    }
   },
 
   restoreWorkspace: async (workspaceId: string) => {
