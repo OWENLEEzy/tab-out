@@ -32,7 +32,11 @@
 - Each TabChip already has `tabIndex={0}` and keyboard handler — wire up visual focus ring via CSS
 - **Important:** `useKeyboard.ts` currently only registers `d`/`s` as `Cmd/Ctrl` combos. Need to add standalone `d` and `s` handlers that only fire when NOT in an input field (same guard as `/` key). Add `onCloseFocused` and `onSaveFocused` to `KeyboardActions` interface, or repurpose the existing empty callbacks.
 
-**Files:** `App.tsx` (state + logic), `useKeyboard.ts` (add standalone D/S handlers)
+**Edge cases:**
+- **Enter double-fire:** TabChip already handles Enter via its own `onKeyDown` (line 148). Global `useKeyboard` also listens for Enter. Solution: in the global handler, skip Enter if `document.activeElement` is a TabChip (check `data-tab-url` attribute). Or have TabChip call `e.stopPropagation()` when it handles Enter.
+- **Shift+Arrow:** P0 scope is single-select navigation only. Shift+↑↓ for range selection deferred to P2 (batch selection mode, item 1.3).
+
+**Files:** `App.tsx` (state + logic), `useKeyboard.ts` (add standalone D/S handlers, Enter guard)
 
 ### 1.2 Action Buttons Always Visible (Semi-transparent)
 
@@ -113,7 +117,7 @@
   - `{N} dupes` — amber pill (`bg-accent-amber/[0.08] text-accent-amber`) — only shown when dupes > 0
   - `{N} domains` — sage pill (`bg-accent-sage/[0.08] text-accent-sage`)
 
-**Files:** `Header.tsx` — add pill row, requires `totalTabs`, `totalDupes`, `totalDomains` props
+**Files:** `Header.tsx` — add pill row, requires `totalTabs`, `totalDupes`, `totalDomains` props. App.tsx computes: `totalDupes = groups.reduce((sum, g) => sum + g.duplicateCount, 0)` (TabGroup.duplicateCount already exists), `totalDomains = groups.length`, `totalTabs = tabs.length` (existing).
 
 ### 2.5 Sort Reset Button
 
@@ -163,7 +167,15 @@
 - TabChip checks if its url is in closingUrls, applies animation class
 - Alternative: CSS-only approach with `onTransitionEnd`
 
-**Files:** `TabChip.tsx` (animation class), `DomainCard.tsx` or `App.tsx` (closing state)
+**Implementation:**
+- Track `closingUrls: Set<string>` state
+- On close: add url to set, set timeout for actual removal (400ms)
+- TabChip checks if its url is in closingUrls, applies animation class
+- Alternative: CSS-only approach with `onTransitionEnd`
+- **State ownership:** `closingUrls` lives in `App.tsx`, passed as prop through DomainCard → TabChip. The flow: user clicks close → add to `closingUrls` → TabChip plays animation → after 400ms timeout, call actual `handleCloseTab` which triggers `chrome.tabs.remove` → store refreshes → chip removed from data and DOM.
+- **Delay strategy:** Don't call the real close handler immediately. Wrap it: `setClosingUrls(prev => new Set([...prev, url]))` then `setTimeout(() => handleCloseTab(url), 400)`. This means the animation plays while the tab still exists, then gets closed after animation completes.
+
+**Files:** `TabChip.tsx` (animation class), `DomainCard.tsx` (pass closingUrls + prop threading), `App.tsx` (closingUrls state + delayed close)
 
 ### 3.3 Footer Count Pop Animation
 
