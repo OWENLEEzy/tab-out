@@ -1,6 +1,13 @@
 import type { StorageSchema, SavedTab, Workspace, AppSettings } from '../types';
 
 const CURRENT_SCHEMA_VERSION = 2;
+const STORAGE_KEYS = [
+  'schemaVersion',
+  'deferred',
+  'workspaces',
+  'settings',
+  'groupOrder',
+] as const;
 
 /**
  * Serial write queue to prevent race conditions during rapid consecutive
@@ -59,40 +66,60 @@ function migrate(data: Partial<StorageSchema>): StorageSchema {
   };
 }
 
-/**
- * Read the full storage schema, applying migrations if needed.
- */
-export async function readStorage(): Promise<StorageSchema> {
-  const result = await chrome.storage.local.get([
-    'schemaVersion',
-    'deferred',
-    'workspaces',
-    'settings',
-    'groupOrder',
-  ]);
+async function readStorageSnapshot(): Promise<Partial<StorageSchema>> {
+  const result = await chrome.storage.local.get([...STORAGE_KEYS]);
 
-  return migrate({
+  return {
     schemaVersion: result.schemaVersion as number | undefined,
     deferred: result.deferred as SavedTab[] | undefined,
     workspaces: result.workspaces as Workspace[] | undefined,
     settings: result.settings as AppSettings | undefined,
     groupOrder: result.groupOrder as Record<string, number> | undefined,
+  };
+}
+
+async function persistStorage(data: StorageSchema): Promise<void> {
+  await chrome.storage.local.set({
+    schemaVersion: data.schemaVersion,
+    deferred: data.deferred,
+    workspaces: data.workspaces,
+    settings: data.settings,
+    groupOrder: data.groupOrder,
   });
 }
 
 /**
- * Write the full storage schema. Uses write queue to prevent race conditions.
+ * Read the full storage schema, applying migrations if needed.
+ */
+export async function readStorage(): Promise<StorageSchema> {
+  return migrate(await readStorageSnapshot());
+}
+
+/**
+ * Replace the full storage schema. Prefer updateStorage for read-modify-write flows.
  */
 export async function writeStorage(data: StorageSchema): Promise<void> {
   await queuedWrite(async () => {
-    await chrome.storage.local.set({
-      schemaVersion: data.schemaVersion,
-      deferred: data.deferred,
-      workspaces: data.workspaces,
-      settings: data.settings,
-      groupOrder: data.groupOrder,
-    });
+    await persistStorage(data);
   });
+}
+
+/**
+ * Safely update storage by reading the latest state inside the write queue.
+ * This prevents stale read snapshots from overwriting unrelated keys.
+ */
+export async function updateStorage(
+  updater: (current: StorageSchema) => StorageSchema | Promise<StorageSchema>
+): Promise<StorageSchema> {
+  let nextState = EMPTY_SCHEMA;
+
+  await queuedWrite(async () => {
+    const current = migrate(await readStorageSnapshot());
+    nextState = migrate(await updater(current));
+    await persistStorage(nextState);
+  });
+
+  return nextState;
 }
 
 /**
@@ -118,7 +145,6 @@ export async function saveTabForLater(tab: {
   url: string;
   title: string;
 }): Promise<SavedTab> {
-  const storage = await readStorage();
   let domain = '';
   try {
     domain = new URL(tab.url).hostname;
@@ -136,12 +162,10 @@ export async function saveTabForLater(tab: {
     dismissed: false,
   };
 
-  const updated: StorageSchema = {
+  await updateStorage((storage) => ({
     ...storage,
     deferred: [...storage.deferred, savedTab],
-  };
-
-  await writeStorage(updated);
+  }));
   return savedTab;
 }
 
@@ -149,30 +173,26 @@ export async function saveTabForLater(tab: {
  * Mark a saved tab as completed (checked off → archive).
  */
 export async function checkOffSavedTab(id: string): Promise<void> {
-  const storage = await readStorage();
-  const updated: StorageSchema = {
+  await updateStorage((storage) => ({
     ...storage,
     deferred: storage.deferred.map((t) =>
       t.id === id
         ? { ...t, completed: true, completedAt: new Date().toISOString() }
         : t
     ),
-  };
-  await writeStorage(updated);
+  }));
 }
 
 /**
  * Dismiss a saved tab (remove from all views).
  */
 export async function dismissSavedTab(id: string): Promise<void> {
-  const storage = await readStorage();
-  const updated: StorageSchema = {
+  await updateStorage((storage) => ({
     ...storage,
     deferred: storage.deferred.map((t) =>
       t.id === id ? { ...t, dismissed: true } : t
     ),
-  };
-  await writeStorage(updated);
+  }));
 }
 
 /**
@@ -189,20 +209,53 @@ export async function readSettings(): Promise<AppSettings> {
 export async function writeSettings(
   settings: Partial<AppSettings>
 ): Promise<void> {
-  const storage = await readStorage();
-  const updated: StorageSchema = {
+  await updateStorage((storage) => ({
     ...storage,
     settings: { ...storage.settings, ...settings },
-  };
-  await writeStorage(updated);
+  }));
+}
+
+/**
+ * Read custom group ordering from storage.
+ */
+export async function readGroupOrder(): Promise<Record<string, number>> {
+  const storage = await readStorage();
+  return storage.groupOrder;
 }
 
 /**
  * Persist custom group ordering from drag-and-drop.
  */
 export async function writeGroupOrder(order: Record<string, number>): Promise<void> {
+  await updateStorage((storage) => ({
+    ...storage,
+    groupOrder: order,
+  }));
+}
+
+/**
+ * Clear custom group ordering, resetting to default alphabetical order.
+ */
+export async function clearGroupOrder(): Promise<void> {
+  await writeGroupOrder({});
+}
+
+/**
+ * Read all workspaces from storage.
+ */
+export async function readWorkspaces(): Promise<Workspace[]> {
   const storage = await readStorage();
-  await writeStorage({ ...storage, groupOrder: order });
+  return storage.workspaces;
+}
+
+/**
+ * Replace all workspaces in storage.
+ */
+export async function writeWorkspaces(workspaces: Workspace[]): Promise<void> {
+  await updateStorage((storage) => ({
+    ...storage,
+    workspaces,
+  }));
 }
 
 // Export for testing
