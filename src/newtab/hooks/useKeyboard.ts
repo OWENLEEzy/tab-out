@@ -9,6 +9,8 @@ interface KeyboardActions {
   onArrowUp: () => void;
   onArrowDown: () => void;
   onEnter: () => void;
+  onDClose: () => void;
+  onDSave: () => void;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────
@@ -39,10 +41,18 @@ export function useKeyboard(actions: KeyboardActions): void {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
       const target = e.target as HTMLElement | null;
+      const activeElement = document.activeElement as HTMLElement | null;
       const isInputField =
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement ||
         target?.isContentEditable === true;
+      const isInsideDialog = Boolean(
+        activeElement?.closest('[role="dialog"][aria-modal="true"]'),
+      );
+
+      if (isInsideDialog) {
+        return;
+      }
 
       // Cmd/Ctrl + K -> onSearch
       if (isMod && e.key === 'k') {
@@ -86,6 +96,19 @@ export function useKeyboard(actions: KeyboardActions): void {
       // Enter -> onEnter
       if (e.key === 'Enter') {
         callbackRef.current.onEnter();
+        return;
+      }
+
+      // d -> onDClose (only outside input fields)
+      if (e.key === 'd' && !isInputField) {
+        callbackRef.current.onDClose();
+        return;
+      }
+
+      // s -> onDSave (only outside input fields — Cmd+S still works in inputs)
+      if (e.key === 's' && !isInputField) {
+        e.preventDefault();
+        callbackRef.current.onDSave();
         return;
       }
     };

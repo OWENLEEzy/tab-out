@@ -1,23 +1,46 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { readStorage, saveTabForLater, checkOffSavedTab, dismissSavedTab, writeGroupOrder } from '../utils/storage';
+import {
+  readStorage,
+  saveTabForLater,
+  checkOffSavedTab,
+  dismissSavedTab,
+  writeGroupOrder,
+  writeSettings,
+} from '../utils/storage';
 
 // Mock chrome.storage.local
 const storage: Record<string, unknown> = {};
+const DEFAULT_SETTINGS = {
+  theme: 'system',
+  soundEnabled: true,
+  confettiEnabled: true,
+  maxChipsVisible: 8,
+  customGroups: [],
+  landingPagePatterns: [],
+};
+
+function snapshot(keys: string[] | string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  (Array.isArray(keys) ? keys : [keys]).forEach((k) => {
+    if (k in storage) result[k] = storage[k];
+  });
+  return result;
+}
+
+type StorageGetMock = {
+  getMockImplementation: () => ((keys: string[] | string) => Promise<Record<string, unknown>>) | undefined;
+  mockImplementation: (impl: (keys: string[] | string) => Promise<Record<string, unknown>>) => void;
+};
 
 beforeEach(() => {
   Object.keys(storage).forEach((k) => delete storage[k]);
+  vi.clearAllMocks();
 });
 
 vi.stubGlobal('chrome', {
   storage: {
     local: {
-      get: vi.fn((keys: string[]) => {
-        const result: Record<string, unknown> = {};
-        (Array.isArray(keys) ? keys : [keys]).forEach((k) => {
-          if (k in storage) result[k] = storage[k];
-        });
-        return Promise.resolve(result);
-      }),
+      get: vi.fn((keys: string[] | string) => Promise.resolve(snapshot(keys))),
       set: vi.fn((items: Record<string, unknown>) => {
         Object.assign(storage, items);
         return Promise.resolve();
@@ -55,7 +78,7 @@ describe('readStorage', () => {
     storage['schemaVersion'] = 1;
     storage['deferred'] = [];
     storage['workspaces'] = [];
-    storage['settings'] = { theme: 'dark', soundEnabled: true, confettiEnabled: true, maxChipsVisible: 8, customGroups: [], landingPagePatterns: [] };
+    storage['settings'] = { ...DEFAULT_SETTINGS, theme: 'dark' };
     const result = await readStorage();
     expect(result.schemaVersion).toBe(2);
     expect(result.groupOrder).toEqual({});
@@ -65,7 +88,7 @@ describe('readStorage', () => {
     storage['schemaVersion'] = 2;
     storage['deferred'] = [];
     storage['workspaces'] = [];
-    storage['settings'] = { theme: 'system', soundEnabled: true, confettiEnabled: true, maxChipsVisible: 8, customGroups: [], landingPagePatterns: [] };
+    storage['settings'] = DEFAULT_SETTINGS;
     storage['groupOrder'] = { 'github.com': 0, 'google.com': 1 };
     const result = await readStorage();
     expect(result.groupOrder).toEqual({ 'github.com': 0, 'google.com': 1 });
@@ -110,5 +133,53 @@ describe('writeGroupOrder', () => {
     await writeGroupOrder({ 'github.com': 1, 'google.com': 0 });
     const result = await readStorage();
     expect(result.groupOrder).toEqual({ 'github.com': 1, 'google.com': 0 });
+  });
+
+  it('does not clobber unrelated settings when another write lands first', async () => {
+    storage['schemaVersion'] = 2;
+    storage['deferred'] = [];
+    storage['workspaces'] = [];
+    storage['settings'] = DEFAULT_SETTINGS;
+    storage['groupOrder'] = {};
+
+    const getMock = chrome.storage.local.get as unknown as StorageGetMock;
+    const originalGet = getMock.getMockImplementation();
+
+    let releaseFirstRead = (): void => {};
+    let readCount = 0;
+
+    getMock.mockImplementation((keys: string[] | string) => {
+      readCount += 1;
+      if (readCount === 1) {
+        const staleSnapshot = {
+          schemaVersion: 2,
+          deferred: [],
+          workspaces: [],
+          settings: DEFAULT_SETTINGS,
+          groupOrder: {},
+        };
+
+        return new Promise<Record<string, unknown>>((resolve) => {
+          releaseFirstRead = () => resolve(staleSnapshot);
+        });
+      }
+
+      if (originalGet) {
+        return originalGet(keys);
+      }
+
+      return Promise.resolve(snapshot(keys));
+    });
+
+    const groupOrderWrite = writeGroupOrder({ 'github.com': 0 });
+    await Promise.resolve();
+
+    const settingsWrite = writeSettings({ soundEnabled: false });
+    releaseFirstRead();
+    await Promise.all([groupOrderWrite, settingsWrite]);
+
+    const result = await readStorage();
+    expect(result.settings.soundEnabled).toBe(false);
+    expect(result.groupOrder).toEqual({ 'github.com': 0 });
   });
 });

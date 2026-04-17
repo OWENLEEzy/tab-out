@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { getFaviconUrl, getHostname, sanitizeUrl } from '../../utils/url';
 import {
   cleanTitle,
@@ -12,9 +12,14 @@ interface TabChipProps {
   url: string;
   title: string;
   duplicateCount: number;
+  active?: boolean;
+  isFocused?: boolean;
+  isClosing?: boolean;
+  isSelected?: boolean;
   onFocus: (url: string) => void;
   onClose: (url: string, title: string) => void;
   onSave: (url: string, title: string) => void;
+  onChipClick?: (url: string, event: React.MouseEvent) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -90,18 +95,37 @@ export function TabChip({
   url,
   title,
   duplicateCount,
+  active = false,
+  isFocused = false,
+  isClosing = false,
+  isSelected = false,
   onFocus,
   onClose,
   onSave,
+  onChipClick,
 }: TabChipProps): React.ReactElement {
   const hostname = getHostname(url);
   const faviconUrl = getFaviconUrl(hostname);
   const displayLabel = buildLabel(title, url);
   const safeUrl = sanitizeUrl(url);
 
-  const handleClick = useCallback(() => {
+  const chipRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (isFocused && chipRef.current) {
+      chipRef.current.focus({ preventScroll: false });
+      chipRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [isFocused]);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (onChipClick && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+      e.stopPropagation();
+      onChipClick(url, e);
+      return;
+    }
     onFocus(url);
-  }, [onFocus, url]);
+  }, [onFocus, onChipClick, url]);
 
   const handleClose = useCallback(
     (e: React.MouseEvent) => {
@@ -128,73 +152,85 @@ export function TabChip({
   );
 
   const chipClasses = [
-    'group flex items-center gap-2 rounded-chip px-2.5 py-1.5',
+    'flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-chip px-2.5 py-1.5',
     'cursor-pointer transition-colors duration-150',
-    'hover:bg-surface-light dark:hover:bg-surface-dark',
+    isSelected ? '' : 'hover:bg-surface-light dark:hover:bg-surface-dark',
     'focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none',
-    duplicateCount > 1 ? 'ring-1 ring-accent-amber/30' : '',
+    duplicateCount > 1 ? 'border-l-2 border-accent-amber bg-accent-amber/[0.04]' : '',
+    active && !isSelected ? 'bg-accent-sage/[0.06]' : '',
+    isFocused && !isSelected ? 'ring-2 ring-accent-blue/40 bg-surface-light dark:bg-surface-dark' : '',
+    isClosing ? 'chip-closing' : '',
+    isSelected ? 'ring-2 ring-accent-blue bg-accent-blue/[0.12]' : '',
   ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div
-      className={chipClasses}
-      data-tab-url={safeUrl}
-      title={displayLabel}
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          handleClick();
-        }
-      }}
-    >
-      {/* Favicon */}
-      {faviconUrl && (
-        <img
-          className="h-4 w-4 shrink-0"
-          src={faviconUrl}
-          alt=""
-          onError={handleImageError}
-        />
-      )}
+    <div className={`group flex items-center gap-1${isClosing ? ' chip-closing' : ''}`}>
+      <button
+        ref={chipRef}
+        type="button"
+        className={chipClasses}
+        data-tab-url={safeUrl}
+        title={displayLabel}
+        onClick={handleClick}
+        aria-current={active ? 'page' : undefined}
+      >
+        {/* Active indicator dot */}
+        {active && (
+          <span
+            className="bg-accent-sage h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ boxShadow: '0 0 0 2px rgba(77,171,154,0.2)' }}
+            aria-hidden="true"
+          />
+        )}
 
-      {/* Title */}
-      <span className="truncate text-sm text-text-primary-light dark:text-text-primary-dark font-body">
-        {displayLabel}
-      </span>
+        {/* Favicon */}
+        {faviconUrl && (
+          <img
+            className="h-4 w-4 shrink-0"
+            src={faviconUrl}
+            alt=""
+            onError={handleImageError}
+          />
+        )}
 
-      {/* Duplicate badge */}
-      {duplicateCount > 1 && (
-        <span className="shrink-0 text-xs text-accent-amber font-body font-medium">
-          ({duplicateCount}x)
+        {/* Title */}
+        <span className={`font-body text-text-primary-light dark:text-text-primary-dark min-w-0 flex-1 truncate text-sm${active ? ' font-semibold' : ''}`}>
+          {displayLabel}
         </span>
-      )}
 
-      {/* Action buttons — visible on hover */}
-      <div className="ml-auto flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-        <button
-          type="button"
-          className="rounded-chip p-1 text-text-secondary transition-colors duration-150 hover:text-accent-blue hover:bg-accent-blue/10 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
-          onClick={handleSave}
-          title="Save for later"
-          aria-label={`Save ${displayLabel} for later`}
-        >
-          <BookmarkIcon />
-        </button>
-        <button
-          type="button"
-          className="rounded-chip p-1 text-text-secondary transition-colors duration-150 hover:text-accent-red hover:bg-accent-red/10 focus-visible:ring-2 focus-visible:ring-accent-red/40 focus-visible:outline-none"
-          onClick={handleClose}
-          title="Close this tab"
-          aria-label={`Close ${displayLabel}`}
-        >
-          <CloseIcon />
-        </button>
-      </div>
+        {/* Duplicate badge */}
+        {duplicateCount > 1 && (
+          <span className="font-body text-accent-amber shrink-0 text-xs font-medium">
+            ×{duplicateCount}
+          </span>
+        )}
+      </button>
+
+      {/* Action buttons — visible on hover, hidden in selection mode */}
+      {!isSelected && (
+        <div className="ml-auto flex shrink-0 items-center gap-1 opacity-40 transition-opacity duration-150 group-hover:opacity-100">
+          <button
+            type="button"
+            className="rounded-chip text-text-secondary hover:bg-accent-blue/10 hover:text-accent-blue focus-visible:ring-accent-blue/40 flex h-11 w-11 cursor-pointer items-center justify-center transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+            onClick={handleSave}
+            title="Save for later"
+            aria-label={`Save ${displayLabel} for later`}
+          >
+            <BookmarkIcon />
+          </button>
+          <button
+            type="button"
+            className="rounded-chip text-text-secondary hover:bg-accent-red/10 hover:text-accent-red focus-visible:ring-accent-red/40 flex h-11 w-11 cursor-pointer items-center justify-center transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
+            onClick={handleClose}
+            title="Close this tab"
+            aria-label={`Close ${displayLabel}`}
+          >
+            <CloseIcon />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
