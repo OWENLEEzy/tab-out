@@ -40,7 +40,7 @@ export function DupeBanner({ count, onClose }: DupeBannerProps): React.ReactElem
       <button
         type="button"
         onClick={onClose}
-        className="whitespace-nowrap rounded-chip bg-accent-amber px-5 py-2 font-body text-xs font-semibold text-white transition-all duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-accent-amber/50 focus-visible:outline-none"
+        className="whitespace-nowrap rounded-chip bg-accent-amber px-5 py-2 font-body text-xs font-semibold text-white transition-all duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-accent-amber/50 focus-visible:outline-none cursor-pointer"
       >
         Close extras
       </button>

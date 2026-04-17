@@ -14,6 +14,10 @@ interface SortableDomainCardProps {
   onCloseTab: (url: string) => void;
   onSaveTab: (url: string, title: string) => void;
   onFocusTab: (url: string) => void;
+  focusedUrl?: string | null;
+  closingUrls?: Set<string>;
+  selectedUrls?: Set<string>;
+  onChipClick?: (url: string, event: React.MouseEvent) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────
@@ -26,6 +30,10 @@ export function SortableDomainCard({
   onCloseTab,
   onSaveTab,
   onFocusTab,
+  focusedUrl,
+  closingUrls,
+  selectedUrls,
+  onChipClick,
 }: SortableDomainCardProps): React.ReactElement {
   const {
     attributes,
@@ -53,6 +61,10 @@ export function SortableDomainCard({
         onCloseTab={onCloseTab}
         onSaveTab={onSaveTab}
         onFocusTab={onFocusTab}
+        focusedUrl={focusedUrl}
+        closingUrls={closingUrls}
+        selectedUrls={selectedUrls}
+        onChipClick={onChipClick}
       />
     </div>
   );

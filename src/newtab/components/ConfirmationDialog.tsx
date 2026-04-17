@@ -111,14 +111,14 @@ export function ConfirmationDialog({
         <div className="mt-5 flex items-center justify-end gap-3">
           <button
             type="button"
-            className="rounded-chip px-4 py-2 text-sm font-body text-text-secondary transition-colors hover:bg-surface-light dark:hover:bg-surface-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+            className="rounded-chip px-4 py-2 text-sm font-body text-text-secondary transition-colors hover:bg-surface-light dark:hover:bg-surface-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
             onClick={onCancel}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="rounded-chip bg-accent-red px-4 py-2 text-sm font-body font-semibold text-white transition-all duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-accent-red/50 focus-visible:outline-none"
+            className="rounded-chip bg-accent-red px-4 py-2 text-sm font-body font-semibold text-white transition-all duration-200 hover:opacity-85 focus-visible:ring-2 focus-visible:ring-accent-red/50 focus-visible:outline-none cursor-pointer"
             onClick={onConfirm}
           >
             {confirmLabel}

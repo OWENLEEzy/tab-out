@@ -49,7 +49,7 @@ export function NudgeBanner({
       <button
         type="button"
         onClick={onDismiss}
-        className="ml-4 flex h-6 w-6 shrink-0 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-accent-red/10 hover:text-accent-red focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+        className="ml-4 flex h-6 w-6 shrink-0 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-accent-red/10 hover:text-accent-red focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
         aria-label="Dismiss"
       >
         <svg

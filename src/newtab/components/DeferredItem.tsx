@@ -8,7 +8,7 @@ import { getHostname, getFaviconUrl } from '../../utils/url';
  * Convert an ISO date string into a human-readable relative time label.
  * Port from extension/app.js lines 479-492.
  */
-export function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string): string {
   if (!dateStr) return '';
 
   const then = new Date(dateStr);
@@ -93,7 +93,7 @@ export function DeferredItem({
       {/* Dismiss button */}
       <button
         type="button"
-        className="text-text-secondary mt-0.5 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+        className="text-text-secondary mt-0.5 shrink-0 rounded p-0.5 opacity-40 transition-opacity hover:text-accent-red group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
         onClick={handleDismiss}
         title="Dismiss"
         aria-label={`Dismiss ${item.title || item.url}`}

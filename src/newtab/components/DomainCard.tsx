@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import type { TabGroup } from '../../types';
 import { TabChip } from './TabChip';
+import { getFaviconUrl } from '../../utils/url';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
@@ -13,6 +14,10 @@ interface DomainCardProps {
   onCloseTab: (url: string) => void;
   onSaveTab: (url: string, title: string) => void;
   onFocusTab: (url: string) => void;
+  focusedUrl?: string | null;
+  closingUrls?: Set<string>;
+  selectedUrls?: Set<string>;
+  onChipClick?: (url: string, event: React.MouseEvent) => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────
@@ -92,10 +97,14 @@ export function DomainCard({
   onCloseTab,
   onSaveTab,
   onFocusTab,
+  focusedUrl,
+  closingUrls,
+  selectedUrls,
+  onChipClick,
 }: DomainCardProps): React.ReactElement {
   const [expanded, setExpanded] = useState(false);
 
-  const tabs = group.tabs || [];
+  const tabs = useMemo(() => group.tabs || [], [group.tabs]);
   const tabCount = tabs.length;
   const displayName = group.friendlyName || group.domain;
 
@@ -167,14 +176,14 @@ export function DomainCard({
   const statusBarColor = hasDupes ? 'bg-accent-amber' : 'bg-accent-sage';
 
   return (
-    <div className="rounded-card bg-card-light dark:bg-card-dark shadow-card transition-shadow duration-200 hover:shadow-card-hover overflow-hidden">
+    <div className="rounded-card bg-card-light dark:bg-card-dark shadow-card transition-all duration-200 hover:shadow-card-hover hover:-translate-y-0.5 overflow-hidden">
       {/* Status bar — 3px top accent */}
       <div className={`h-[3px] ${statusBarColor}`} />
 
       <div className="p-4">
         {/* Header: domain name + badges — drag handle when DnD is active */}
         <div
-          className="mb-3 flex flex-wrap items-center gap-2 cursor-grab active:cursor-grabbing"
+          className={`mb-3 flex flex-wrap items-center gap-2${dragHandleProps ? ' cursor-grab active:cursor-grabbing' : ''}`}
           {...dragHandleProps}
         >
           {dragHandleProps && (
@@ -190,6 +199,16 @@ export function DomainCard({
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           )}
+          <img
+            src={getFaviconUrl(group.domain)}
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5 shrink-0 rounded-[3px]"
+            onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
           <h3 className="font-heading text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
             {displayName}
           </h3>
@@ -200,12 +219,14 @@ export function DomainCard({
             {tabCount} tab{tabCount !== 1 ? 's' : ''} open
           </span>
 
-          {/* Duplicate count badge */}
           {hasDupes && (
-            <span className="inline-flex items-center rounded-chip bg-accent-amber/10 px-2 py-0.5 text-xs text-accent-amber font-body font-medium">
-              {totalExtras} duplicate{totalExtras !== 1 ? 's' : ''}
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1 rounded-chip bg-accent-amber/10 px-2 py-0.5 text-xs text-accent-amber font-body font-medium">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+            {totalExtras} dupe{totalExtras !== 1 ? 's' : ''}
+          </span>
+        )}
         </div>
 
         {/* Tab chips */}
@@ -216,9 +237,14 @@ export function DomainCard({
               url={tab.url}
               title={tab.title}
               duplicateCount={urlCounts[tab.url] ?? 1}
+              active={tab.active}
+              isFocused={tab.url === focusedUrl}
+              isClosing={closingUrls?.has(tab.url)}
+              isSelected={selectedUrls?.has(tab.url)}
               onFocus={handleFocusTab}
               onClose={handleCloseTab}
               onSave={handleSaveTab}
+              onChipClick={onChipClick}
             />
           ))}
 
@@ -231,9 +257,14 @@ export function DomainCard({
                   url={tab.url}
                   title={tab.title}
                   duplicateCount={urlCounts[tab.url] ?? 1}
+                  active={tab.active}
+                  isFocused={tab.url === focusedUrl}
+                  isClosing={closingUrls?.has(tab.url)}
+                  isSelected={selectedUrls?.has(tab.url)}
                   onFocus={handleFocusTab}
                   onClose={handleCloseTab}
                   onSave={handleSaveTab}
+                  onChipClick={onChipClick}
                 />
               ))}
             </div>

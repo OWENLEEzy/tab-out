@@ -65,7 +65,7 @@ export function SearchBar({
       <input
         ref={inputRef}
         type="text"
-        className="border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-text-primary-light dark:text-text-primary-dark w-full rounded-chip border py-2 pl-9 pr-20 text-sm placeholder:text-text-secondary outline-none focus:border-accent-sage focus:ring-2 focus:ring-accent-blue/30 transition-colors"
+        className="border-border-light dark:border-border-dark bg-bg-light dark:bg-bg-dark text-text-primary-light dark:text-text-primary-dark w-full rounded-chip border py-2 pl-9 pr-20 text-sm placeholder:text-text-secondary outline-none focus:border-accent-sage focus-visible:ring-2 focus-visible:ring-accent-blue/40 transition-colors"
         placeholder="Search tabs..."
         value={value}
         onChange={handleInputChange}
@@ -88,7 +88,7 @@ export function SearchBar({
           <button
             type="button"
             onClick={handleClear}
-            className="flex h-5 w-5 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-surface-light hover:text-text-primary-light dark:hover:bg-surface-dark dark:hover:text-text-primary-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+            className="flex h-7 w-7 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-surface-light hover:text-text-primary-light dark:hover:bg-surface-dark dark:hover:text-text-primary-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
             aria-label="Clear search"
           >
             <svg

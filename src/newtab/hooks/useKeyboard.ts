@@ -9,6 +9,8 @@ interface KeyboardActions {
   onArrowUp: () => void;
   onArrowDown: () => void;
   onEnter: () => void;
+  onDClose: () => void;
+  onDSave: () => void;
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────
@@ -86,6 +88,19 @@ export function useKeyboard(actions: KeyboardActions): void {
       // Enter -> onEnter
       if (e.key === 'Enter') {
         callbackRef.current.onEnter();
+        return;
+      }
+
+      // d -> onDClose (only outside input fields)
+      if (e.key === 'd' && !isInputField) {
+        callbackRef.current.onDClose();
+        return;
+      }
+
+      // s -> onDSave (only outside input fields — Cmd+S still works in inputs)
+      if (e.key === 's' && !isInputField) {
+        e.preventDefault();
+        callbackRef.current.onDSave();
         return;
       }
     };

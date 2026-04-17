@@ -11,6 +11,7 @@ interface SettingsPanelProps {
   onSetTheme: (theme: 'light' | 'dark' | 'system') => void;
   onToggleSound: () => void;
   onToggleConfetti: () => void;
+  onResetSortOrder: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────
@@ -24,6 +25,7 @@ export function SettingsPanel({
   onSetTheme,
   onToggleSound,
   onToggleConfetti,
+  onResetSortOrder,
 }: SettingsPanelProps): React.ReactElement | null {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,7 @@ export function SettingsPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-surface-light hover:text-text-primary-light dark:hover:bg-surface-dark dark:hover:text-text-primary-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+            className="flex h-7 w-7 items-center justify-center rounded-chip text-text-secondary transition-colors hover:bg-surface-light hover:text-text-primary-light dark:hover:bg-surface-dark dark:hover:text-text-primary-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
             aria-label="Close settings"
           >
             <svg
@@ -111,6 +113,19 @@ export function SettingsPanel({
             checked={confettiEnabled}
             onChange={onToggleConfetti}
           />
+          {/* Sort order reset */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-body text-text-primary-light dark:text-text-primary-dark">
+              Sort order
+            </span>
+            <button
+              type="button"
+              onClick={onResetSortOrder}
+              className="rounded-chip px-3 py-1 text-xs font-body text-accent-blue transition-colors hover:bg-accent-blue/10 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
+            >
+              Reset to default
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -142,7 +157,7 @@ function ThemeRow({ value, onChange }: ThemeRowProps): React.ReactElement {
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`px-3 py-1 text-xs font-body transition-colors ${
+            className={`px-3 py-1 text-xs font-body transition-colors cursor-pointer ${
               value === opt.value
                 ? 'bg-accent-sage text-white'
                 : 'text-text-secondary hover:bg-surface-light dark:hover:bg-surface-dark'
@@ -180,7 +195,7 @@ function ToggleRow({ id, label, checked, onChange }: ToggleRowProps): React.Reac
         role="switch"
         aria-checked={checked}
         onClick={onChange}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-sage focus-visible:ring-offset-2 ${
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:ring-offset-2 ${
           checked
             ? 'bg-accent-sage'
             : 'bg-border-light dark:bg-border-dark'
