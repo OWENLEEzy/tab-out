@@ -1,12 +1,14 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import jsxA11y from 'eslint-plugin-jsx-a11y'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
+import tailwindcss from 'eslint-plugin-tailwindcss'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'extension']),
+  globalIgnores(['dist', 'extension', 'playwright-report', 'test-results']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -38,6 +40,42 @@ export default defineConfig([
       }],
     },
   },
+  {
+    files: ['**/*.{ts,tsx}'],
+    ...jsxA11y.flatConfigs.strict,
+    languageOptions: {
+      ...jsxA11y.flatConfigs.strict.languageOptions,
+      ecmaVersion: 2020,
+      globals: globals.browser,
+    },
+    rules: {
+      ...jsxA11y.flatConfigs.strict.rules,
+      'jsx-a11y/no-autofocus': 'off',
+    },
+  },
+  ...tailwindcss.configs['flat/recommended'].map((config) => ({
+    ...config,
+    files: ['**/*.{ts,tsx}'],
+    settings: {
+      ...(config.settings ?? {}),
+      tailwindcss: {
+        ...(config.settings?.tailwindcss ?? {}),
+        callees: ['clsx', 'cn'],
+        config: {},
+      },
+    },
+    rules: {
+      ...(config.rules ?? {}),
+      'tailwindcss/classnames-order': 'off',
+      'tailwindcss/enforces-negative-arbitrary-values': 'error',
+      'tailwindcss/enforces-shorthand': 'error',
+      'tailwindcss/no-contradicting-classname': 'error',
+      'tailwindcss/no-unnecessary-arbitrary-value': 'error',
+      'tailwindcss/no-custom-classname': 'off',
+      'tailwindcss/no-arbitrary-value': 'off',
+      'tailwindcss/migration-from-tailwind-2': 'off',
+    },
+  })),
 
   // ── Architecture Guardrails ──────────────────────────────────────
   //
@@ -153,6 +191,20 @@ export default defineConfig([
               message: 'Components must not import storage utilities. Data flows through stores and props, not direct storage access.',
             },
           ],
+        },
+      ],
+    },
+  },
+
+  // Rule 7: avoid fake buttons on static elements
+  {
+    files: ['src/newtab/components/**/*.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXOpeningElement[name.name='div'] JSXAttribute[name.name='role'][value.value='button']",
+          message: 'Use a native <button> for primary click targets instead of div[role=\"button\"].',
         },
       ],
     },

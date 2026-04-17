@@ -4,6 +4,9 @@ import { crx } from '@crxjs/vite-plugin';
 import manifest from './manifest.json';
 
 export default defineConfig({
+  build: {
+    cssMinify: 'esbuild',
+  },
   plugins: [
     react(),
     crx({ manifest }),
