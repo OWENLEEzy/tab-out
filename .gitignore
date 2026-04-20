@@ -10,6 +10,8 @@ docs/superpowers/
 *.crx
 *.pem
 *.zip
+playwright-report/
+test-results/
 
 # Personal config (landing page patterns, etc.) — never push to GitHub
 extension/config.local.js

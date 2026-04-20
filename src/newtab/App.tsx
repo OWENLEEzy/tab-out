@@ -9,6 +9,8 @@ import { DupeBanner } from './components/DupeBanner';
 import { NudgeBanner } from './components/NudgeBanner';
 import { SearchBar } from './components/SearchBar';
 import { SortableDomainCard } from './components/SortableDomainCard';
+import { DomainCard } from './components/DomainCard';
+import { SelectionBar } from './components/SelectionBar';
 import { DeferredColumn } from './components/DeferredColumn';
 import { EmptyState } from './components/EmptyState';
 import { Footer } from './components/Footer';
@@ -17,10 +19,13 @@ import { ConfirmationDialog } from './components/ConfirmationDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { useTabStore } from '../stores/tab-store';
 import { useSavedStore } from '../stores/saved-store';
+import { useSettingsStore } from '../stores/settings-store';
+import { clearGroupOrder } from '../utils/storage';
 import { useChromeStorage } from './hooks/useChromeStorage';
 import { useKeyboard } from './hooks/useKeyboard';
-import { shootConfetti } from '../lib/confetti';
-import { playCloseSound } from '../lib/sound';
+import { flattenVisibleTabs } from './lib/visible-tabs';
+import { getChipCloseDelay, userPrefersReducedMotion } from './lib/motion';
+import { playCloseEffects } from '../lib/close-effects';
 import { isTabOutPage } from '../utils/url';
 import { LANDING_PAGES_KEY } from '../lib/tab-grouper';
 import type { TabGroup } from '../types';
@@ -44,14 +49,21 @@ export function App(): React.ReactElement {
   }>({ open: false, title: '', message: '', confirmLabel: '', onConfirm: () => {} });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [closingUrls, setClosingUrls] = useState<Set<string>>(new Set());
+  const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+  const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── Stores ────────────────────────────────────────────────────────
   const tabStore = useTabStore();
   const savedStore = useSavedStore();
+  const settingsStore = useSettingsStore();
 
   const { tabs, groups, loading: tabsLoading } = tabStore;
   const { active: savedActive, archived: savedArchived, archiveSearch } = savedStore;
+  const { settings } = settingsStore;
 
   // ─── Toast helper ──────────────────────────────────────────────────
 
@@ -67,17 +79,32 @@ export function App(): React.ReactElement {
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const applyTheme = (dark: boolean) => {
-      document.documentElement.classList.toggle('dark', dark);
+    const applyTheme = () => {
+      const { theme } = useSettingsStore.getState().settings;
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else {
+        document.documentElement.classList.toggle('dark', mq.matches);
+      }
     };
-    applyTheme(mq.matches);
-    mq.addEventListener('change', (e) => applyTheme(e.matches));
-    return () => mq.removeEventListener('change', (e) => applyTheme(e.matches));
+
+    applyTheme();
+    mq.addEventListener('change', applyTheme);
+
+    // Re-apply when settings change
+    const unsub = useSettingsStore.subscribe(applyTheme);
+
+    return () => {
+      mq.removeEventListener('change', applyTheme);
+      unsub();
+    };
   }, []);
 
   useEffect(() => {
     async function init() {
-      await Promise.all([tabStore.fetchTabs(), savedStore.fetchSaved()]);
+      await Promise.all([tabStore.fetchTabs(), savedStore.fetchSaved(), settingsStore.fetchSettings()]);
       setLoading(false);
     }
     init();
@@ -100,22 +127,51 @@ export function App(): React.ReactElement {
 
   useKeyboard({
     onSearch: () => {
-      // Focus the search input
       const input = document.querySelector<HTMLInputElement>('input[aria-label="Search tabs"]');
       input?.focus();
     },
     onSave: () => {
-      // Save the first tab (will be enhanced with keyboard nav later)
       showToast('No tab selected');
     },
     onEscape: () => {
       setSearchQuery('');
       setSettingsOpen(false);
-      document.activeElement instanceof HTMLElement && document.activeElement.blur();
+      setFocusedIndex(null);
+      setSelectedUrls(new Set());
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     },
-    onArrowUp: () => {},
-    onArrowDown: () => {},
-    onEnter: () => {},
+    onArrowUp: () => {
+      setFocusedIndex((prev) => {
+        if (flatChips.length === 0) return null;
+        if (prev === null) return flatChips.length - 1;
+        return prev > 0 ? prev - 1 : flatChips.length - 1;
+      });
+    },
+    onArrowDown: () => {
+      setFocusedIndex((prev) => {
+        if (flatChips.length === 0) return null;
+        if (prev === null) return 0;
+        return prev < flatChips.length - 1 ? prev + 1 : 0;
+      });
+    },
+    onEnter: () => {
+      // Skip if focus is on a TabChip (it handles its own Enter via onKeyDown)
+      const active = document.activeElement;
+      if (active?.closest('[data-tab-url]')) return;
+      if (focusedIndex !== null && flatChips[focusedIndex]) {
+        handleFocusTab(flatChips[focusedIndex].url);
+      }
+    },
+    onDClose: () => {
+      if (focusedIndex !== null && flatChips[focusedIndex]) {
+        handleCloseTabAnimated(flatChips[focusedIndex].url);
+      }
+    },
+    onDSave: () => {
+      if (focusedIndex !== null && flatChips[focusedIndex]) {
+        handleSaveTab(flatChips[focusedIndex].url, flatChips[focusedIndex].title);
+      }
+    },
   });
 
   // ─── Search filtering ──────────────────────────────────────────────
@@ -142,6 +198,14 @@ export function App(): React.ReactElement {
     [filteredGroups],
   );
 
+  const flatChips = flattenVisibleTabs(
+    filteredGroups,
+    settings.maxChipsVisible,
+    expandedDomains,
+  );
+
+  const focusedUrl = focusedIndex !== null ? flatChips[focusedIndex]?.url ?? null : null;
+
   // ─── Tab Out dupe count ────────────────────────────────────────────
 
   const tabOutCount = useMemo(
@@ -162,7 +226,7 @@ export function App(): React.ReactElement {
   const handleCloseDomain = useCallback(
     (group: TabGroup) => {
       const urls = group.tabs.map((t) => t.url);
-      playCloseSound();
+      playCloseEffects(settings);
       // Landing pages use exact-match close to avoid closing non-landing tabs on the same domain
       const closeFn =
         group.domain === LANDING_PAGES_KEY
@@ -170,30 +234,51 @@ export function App(): React.ReactElement {
           : tabStore.closeTabsByUrls;
       closeFn(urls).then(() => {
         showToast(`Closed all ${group.tabs.length} ${group.friendlyName || group.domain} tabs`);
-        shootConfetti(window.innerWidth / 2, window.innerHeight / 2);
+        playCloseEffects(settings, {
+          sound: false,
+          confettiOrigin: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+        });
       });
     },
-    [tabStore, showToast],
+    [settings, tabStore, showToast],
   );
 
   const handleCloseDuplicates = useCallback(
     (urls: string[]) => {
-      playCloseSound();
+      playCloseEffects(settings);
       tabStore.closeDuplicates(urls, true).then(() => {
         showToast('Duplicates closed');
       });
     },
-    [tabStore, showToast],
+    [settings, tabStore, showToast],
   );
 
-  const handleCloseTab = useCallback(
+  const handleCloseTabAnimated = useCallback(
     (url: string) => {
-      playCloseSound();
-      tabStore.closeTabByUrl(url).then(() => {
-        showToast('Tab closed');
-      });
+      const closeDelay = getChipCloseDelay(userPrefersReducedMotion());
+
+      playCloseEffects(settings);
+
+      if (closeDelay === 0) {
+        tabStore.closeTabByUrl(url).then(() => {
+          showToast('Tab closed');
+        });
+        return;
+      }
+
+      setClosingUrls((prev) => new Set([...prev, url]));
+      setTimeout(() => {
+        tabStore.closeTabByUrl(url).then(() => {
+          showToast('Tab closed');
+          setClosingUrls((prev) => {
+            const next = new Set(prev);
+            next.delete(url);
+            return next;
+          });
+        });
+      }, closeDelay);
     },
-    [tabStore, showToast],
+    [settings, tabStore, showToast],
   );
 
   const handleSaveTab = useCallback(
@@ -224,6 +309,79 @@ export function App(): React.ReactElement {
     });
   }, [tabs, tabStore, showToast]);
 
+  const handleResetSortOrder = useCallback(async () => {
+    await clearGroupOrder();
+    await tabStore.fetchTabs();
+    showToast('Sort order reset');
+    setSettingsOpen(false);
+  }, [tabStore, showToast]);
+
+  // ─── Batch selection handlers ───────────────────────────────────────
+
+  const handleChipClick = useCallback(
+    (url: string, event: React.MouseEvent) => {
+      const chipIndex = flatChips.findIndex((c) => c.url === url);
+      if (chipIndex === -1) {
+        return;
+      }
+
+      if (event.shiftKey && lastClickedIndex !== null) {
+        const start = Math.min(lastClickedIndex, chipIndex);
+        const end = Math.max(lastClickedIndex, chipIndex);
+        const rangeUrls = flatChips.slice(start, end + 1).map((c) => c.url);
+        setSelectedUrls((prev) => new Set([...prev, ...rangeUrls]));
+      } else if (event.metaKey || event.ctrlKey || selectedUrls.size > 0) {
+        setSelectedUrls((prev) => {
+          const next = new Set(prev);
+          if (next.has(url)) {
+            next.delete(url);
+          } else {
+            next.add(url);
+          }
+          return next;
+        });
+      }
+      setLastClickedIndex(chipIndex);
+    },
+    [flatChips, lastClickedIndex, selectedUrls],
+  );
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedUrls(new Set());
+    setLastClickedIndex(null);
+  }, []);
+
+  const handleToggleExpanded = useCallback((domain: string) => {
+    setExpandedDomains((prev) => {
+      const next = new Set(prev);
+
+      if (next.has(domain)) {
+        next.delete(domain);
+      } else {
+        next.add(domain);
+      }
+
+      return next;
+    });
+  }, []);
+
+  const handleCloseSelected = useCallback(() => {
+    const urls = [...selectedUrls];
+    playCloseEffects(settings);
+    tabStore.closeOneTabPerUrl(urls).then(() => {
+      showToast(`Closed ${urls.length} tab${urls.length !== 1 ? 's' : ''}`);
+      setSelectedUrls(new Set());
+    });
+  }, [selectedUrls, settings, tabStore, showToast]);
+
+  const handleSaveSelected = useCallback(() => {
+    const chipsToSave = flatChips.filter((c) => selectedUrls.has(c.url));
+    Promise.all(chipsToSave.map((c) => savedStore.saveTab(c.url, c.title))).then(() => {
+      showToast(`Saved ${chipsToSave.length} tab${chipsToSave.length !== 1 ? 's' : ''}`);
+      setSelectedUrls(new Set());
+    });
+  }, [selectedUrls, flatChips, savedStore, showToast]);
+
   const handleCloseAll = useCallback(() => {
     setConfirmDialog({
       open: true,
@@ -231,16 +389,19 @@ export function App(): React.ReactElement {
       message: `This will close all ${tabs.length} open tabs. This cannot be undone.`,
       confirmLabel: 'Close all',
       onConfirm: () => {
-        playCloseSound();
+        playCloseEffects(settings);
         const allUrls = tabs.map((t) => t.url);
         tabStore.closeTabsExact(allUrls).then(() => {
           showToast(`Closed ${tabs.length} tabs`);
-          shootConfetti(window.innerWidth / 2, window.innerHeight / 2);
+          playCloseEffects(settings, {
+            sound: false,
+            confettiOrigin: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+          });
         });
         setConfirmDialog((prev) => ({ ...prev, open: false }));
       },
     });
-  }, [tabs, tabStore, showToast]);
+  }, [settings, tabs, tabStore, showToast]);
 
   const handleCheckOff = useCallback(
     (id: string) => {
@@ -284,6 +445,13 @@ export function App(): React.ReactElement {
     [filteredGroups, tabStore],
   );
 
+  // ─── Derived state (must be before early return to satisfy rules-of-hooks) ──
+
+  const totalDupes = useMemo(
+    () => groups.reduce((sum, g) => sum + g.duplicateCount, 0),
+    [groups],
+  );
+
   // ─── Render ────────────────────────────────────────────────────────
 
   if (loading || tabsLoading) {
@@ -291,6 +459,7 @@ export function App(): React.ReactElement {
   }
 
   const totalTabs = tabs.length;
+  const totalDomains = groups.length;
   const hasDeferredContent = savedActive.length > 0 || savedArchived.length > 0;
   const showEmptyState = groups.length === 0 && !hasDeferredContent;
 
@@ -299,13 +468,14 @@ export function App(): React.ReactElement {
       {/* Skip to main content — keyboard accessibility */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:rounded-chip focus:bg-accent-blue focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:outline-none"
+        className="focus:rounded-chip focus:bg-accent-blue sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[60] focus:px-4 focus:py-2 focus:text-sm focus:text-white focus:outline-none"
+        style={{ zIndex: 60 }}
       >
         Skip to main content
       </a>
       <div className="tab-out-container">
         {/* Header */}
-        <Header />
+        <Header totalTabs={totalTabs} totalDupes={totalDupes} totalDomains={totalDomains} />
 
         {/* Tab Out duplicates banner */}
         <DupeBanner count={tabOutCount} onClose={handleCloseExtras} />
@@ -336,47 +506,77 @@ export function App(): React.ReactElement {
         ) : (
           <div className={`dashboard-columns ${hasDeferredContent ? 'has-sidebar' : ''}`}>
             {/* Left column: open tabs */}
-            <div id="main-content" className="active-section">
+            <main id="main-content" tabIndex={-1} className="active-section">
               {filteredGroups.length > 0 && (
                 <div className="section-header">
-                  <h2 className="font-heading text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+                  <h2 className="font-heading text-text-primary-light dark:text-text-primary-dark text-base font-semibold">
                     Right now
                   </h2>
                   <div className="border-border-light dark:border-border-dark mx-3 h-px flex-1" />
-                  <span className="text-xs text-text-secondary whitespace-nowrap">
+                  <span className="text-text-secondary text-xs whitespace-nowrap">
                     {filteredTabCount} tab{filteredTabCount !== 1 ? 's' : ''}
                   </span>
                   {/* Close all button */}
                   <button
                     type="button"
-                    className="ml-2 rounded-chip px-2.5 py-1 text-xs text-text-secondary transition-colors hover:bg-accent-red/10 hover:text-accent-red focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none"
+                    className="rounded-chip text-text-secondary hover:bg-accent-red/10 hover:text-accent-red focus-visible:ring-accent-blue/40 ml-2 min-h-11 cursor-pointer px-3 py-1 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none"
                     onClick={handleCloseAll}
                   >
                     Close all
                   </button>
                 </div>
               )}
-              <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext
-                  items={filteredGroups.map((g) => g.domain)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="missions">
-                    {filteredGroups.map((group) => (
-                      <SortableDomainCard
-                        key={group.domain}
-                        group={group}
-                        onCloseDomain={handleCloseDomain}
-                        onCloseDuplicates={handleCloseDuplicates}
-                        onCloseTab={handleCloseTab}
-                        onSaveTab={handleSaveTab}
-                        onFocusTab={handleFocusTab}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </div>
+              {selectedUrls.size > 0 ? (
+                <div className="missions">
+                  {filteredGroups.map((group) => (
+                    <DomainCard
+                      key={group.domain}
+                      group={group}
+                      expanded={expandedDomains.has(group.domain)}
+                      maxChipsVisible={settings.maxChipsVisible}
+                      focusedUrl={focusedUrl}
+                      closingUrls={closingUrls}
+                      selectedUrls={selectedUrls}
+                      onChipClick={handleChipClick}
+                      onToggleExpanded={handleToggleExpanded}
+                      onCloseDomain={handleCloseDomain}
+                      onCloseDuplicates={handleCloseDuplicates}
+                      onCloseTab={handleCloseTabAnimated}
+                      onSaveTab={handleSaveTab}
+                      onFocusTab={handleFocusTab}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext
+                    items={filteredGroups.map((g) => g.domain)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="missions">
+                      {filteredGroups.map((group) => (
+                        <SortableDomainCard
+                          key={group.domain}
+                          group={group}
+                          expanded={expandedDomains.has(group.domain)}
+                          maxChipsVisible={settings.maxChipsVisible}
+                          onCloseDomain={handleCloseDomain}
+                          onCloseDuplicates={handleCloseDuplicates}
+                          onCloseTab={handleCloseTabAnimated}
+                          onSaveTab={handleSaveTab}
+                          onFocusTab={handleFocusTab}
+                          focusedUrl={focusedUrl}
+                          closingUrls={closingUrls}
+                          selectedUrls={selectedUrls}
+                          onChipClick={handleChipClick}
+                          onToggleExpanded={handleToggleExpanded}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </main>
 
             {/* Right column: Saved for Later */}
             <DeferredColumn
@@ -396,7 +596,7 @@ export function App(): React.ReactElement {
         {/* Settings gear (bottom-right) */}
         <button
           type="button"
-          className="fixed bottom-5 right-5 flex h-9 w-9 items-center justify-center rounded-full border border-border-light bg-bg-light text-text-secondary shadow-card transition-all hover:shadow-card-hover hover:text-text-primary-light dark:border-border-dark dark:bg-bg-dark dark:hover:text-text-primary-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none z-40"
+          className="border-border-light bg-bg-light text-text-secondary shadow-card hover:shadow-card-hover hover:text-text-primary-light focus-visible:ring-accent-blue/40 dark:border-border-dark dark:bg-bg-dark dark:hover:text-text-primary-dark fixed right-5 bottom-5 z-40 flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border transition-all focus-visible:ring-2 focus-visible:outline-none"
           onClick={() => setSettingsOpen(true)}
           aria-label="Settings"
         >
@@ -436,14 +636,27 @@ export function App(): React.ReactElement {
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        soundEnabled={true}
-        confettiEnabled={true}
-        onToggleSound={() => {}}
-        onToggleConfetti={() => {}}
+        theme={settings.theme}
+        soundEnabled={settings.soundEnabled}
+        confettiEnabled={settings.confettiEnabled}
+        onSetTheme={settingsStore.setTheme}
+        onToggleSound={settingsStore.toggleSound}
+        onToggleConfetti={settingsStore.toggleConfetti}
+        onResetSortOrder={handleResetSortOrder}
       />
 
       {/* Toast overlay */}
       <Toast message={toast.message} visible={toast.visible} />
+
+      {/* Batch selection bar */}
+      {selectedUrls.size > 0 && (
+        <SelectionBar
+          count={selectedUrls.size}
+          onClose={handleCloseSelected}
+          onSave={handleSaveSelected}
+          onClear={handleClearSelection}
+        />
+      )}
     </ErrorBoundary>
   );
 }

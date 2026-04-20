@@ -1,22 +1,31 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import type { TabGroup } from '../../types';
 import { TabChip } from './TabChip';
+import { getFaviconUrl } from '../../utils/url';
+import { getVisibleTabs } from '../lib/visible-tabs';
 
 // ─── Types ────────────────────────────────────────────────────────────
 
 interface DomainCardProps {
   group: TabGroup;
   dragHandleProps?: Record<string, unknown>;
+  expanded?: boolean;
+  maxChipsVisible?: number;
   onCloseDomain: (group: TabGroup) => void;
   onCloseDuplicates: (urls: string[]) => void;
   onCloseTab: (url: string) => void;
   onSaveTab: (url: string, title: string) => void;
   onFocusTab: (url: string) => void;
+  focusedUrl?: string | null;
+  closingUrls?: Set<string>;
+  selectedUrls?: Set<string>;
+  onChipClick?: (url: string, event: React.MouseEvent) => void;
+  onToggleExpanded?: (domain: string) => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────
 
-const MAX_VISIBLE_CHIPS = 8;
+const DEFAULT_MAX_CHIPS = 8;
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 
@@ -85,17 +94,23 @@ function DedupIcon(): React.ReactElement {
 export function DomainCard({
   group,
   dragHandleProps,
+  expanded = false,
+  maxChipsVisible = DEFAULT_MAX_CHIPS,
   onCloseDomain,
   onCloseDuplicates,
   onCloseTab,
   onSaveTab,
   onFocusTab,
+  focusedUrl,
+  closingUrls,
+  selectedUrls,
+  onChipClick,
+  onToggleExpanded,
 }: DomainCardProps): React.ReactElement {
-  const [expanded, setExpanded] = useState(false);
-
-  const tabs = group.tabs || [];
+  const tabs = useMemo(() => group.tabs || [], [group.tabs]);
   const tabCount = tabs.length;
   const displayName = group.friendlyName || group.domain;
+  const selectionMode = (selectedUrls?.size ?? 0) > 0;
 
   // Count URL occurrences to detect duplicates
   const { urlCounts, dupeUrls, totalExtras } = useMemo(() => {
@@ -110,18 +125,10 @@ export function DomainCard({
 
   const hasDupes = dupeUrls.length > 0;
 
-  // Deduplicate for display: show each URL once, with (Nx) badge if duplicated
-  const uniqueTabs = useMemo(() => {
-    const seen = new Set<string>();
-    return tabs.filter((tab) => {
-      if (seen.has(tab.url)) return false;
-      seen.add(tab.url);
-      return true;
-    });
-  }, [tabs]);
-
-  const visibleTabs = uniqueTabs.slice(0, MAX_VISIBLE_CHIPS);
-  const hiddenTabs = uniqueTabs.slice(MAX_VISIBLE_CHIPS);
+  const { visibleTabs, hiddenTabs } = useMemo(
+    () => getVisibleTabs(tabs, maxChipsVisible, expanded),
+    [tabs, maxChipsVisible, expanded],
+  );
   const extraCount = hiddenTabs.length;
 
   // ─── Handlers ────────────────────────────────────────────────────────
@@ -136,8 +143,8 @@ export function DomainCard({
   }, [onCloseDuplicates, dupeUrls]);
 
   const handleExpand = useCallback(() => {
-    setExpanded((prev) => !prev);
-  }, []);
+    onToggleExpanded?.(group.domain);
+  }, [group.domain, onToggleExpanded]);
 
   const handleCloseTab = useCallback(
     (url: string) => {
@@ -165,14 +172,14 @@ export function DomainCard({
   const statusBarColor = hasDupes ? 'bg-accent-amber' : 'bg-accent-sage';
 
   return (
-    <div className="rounded-card bg-card-light dark:bg-card-dark shadow-card transition-shadow duration-200 hover:shadow-card-hover overflow-hidden">
+    <div className="rounded-card bg-card-light dark:bg-card-dark shadow-card hover:shadow-card-hover overflow-hidden transition-all duration-200 hover:-translate-y-0.5">
       {/* Status bar — 3px top accent */}
       <div className={`h-[3px] ${statusBarColor}`} />
 
       <div className="p-4">
         {/* Header: domain name + badges — drag handle when DnD is active */}
         <div
-          className="mb-3 flex flex-wrap items-center gap-2 cursor-grab active:cursor-grabbing"
+          className={`mb-3 flex flex-wrap items-center gap-2${dragHandleProps ? ' cursor-grab active:cursor-grabbing' : ''}`}
           {...dragHandleProps}
         >
           {dragHandleProps && (
@@ -182,28 +189,40 @@ export function DomainCard({
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className="h-4 w-4 text-text-secondary shrink-0"
+              className="text-text-secondary h-4 w-4 shrink-0"
               aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
             </svg>
           )}
-          <h3 className="font-heading text-base font-semibold text-text-primary-light dark:text-text-primary-dark">
+          <img
+            src={getFaviconUrl(group.domain)}
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5 shrink-0 rounded-[3px]"
+            onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          <h3 className="font-heading text-text-primary-light dark:text-text-primary-dark text-base font-semibold">
             {displayName}
           </h3>
 
           {/* Tab count badge */}
-          <span className="inline-flex items-center gap-1 rounded-chip bg-surface-light dark:bg-surface-dark px-2 py-0.5 text-xs text-text-secondary font-body">
+          <span className="rounded-chip bg-surface-light dark:bg-surface-dark text-text-secondary font-body inline-flex items-center gap-1 px-2 py-0.5 text-xs">
             <TabsIcon />
             {tabCount} tab{tabCount !== 1 ? 's' : ''} open
           </span>
 
-          {/* Duplicate count badge */}
           {hasDupes && (
-            <span className="inline-flex items-center rounded-chip bg-accent-amber/10 px-2 py-0.5 text-xs text-accent-amber font-body font-medium">
-              {totalExtras} duplicate{totalExtras !== 1 ? 's' : ''}
-            </span>
-          )}
+          <span className="rounded-chip bg-accent-amber/10 text-accent-amber font-body inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3 w-3" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+            </svg>
+            {totalExtras} dupe{totalExtras !== 1 ? 's' : ''}
+          </span>
+        )}
         </div>
 
         {/* Tab chips */}
@@ -214,35 +233,24 @@ export function DomainCard({
               url={tab.url}
               title={tab.title}
               duplicateCount={urlCounts[tab.url] ?? 1}
+              active={tab.active}
+              isFocused={tab.url === focusedUrl}
+              isClosing={closingUrls?.has(tab.url)}
+              isSelected={selectedUrls?.has(tab.url)}
+              selectionMode={selectionMode}
               onFocus={handleFocusTab}
               onClose={handleCloseTab}
               onSave={handleSaveTab}
+              onChipClick={onChipClick}
             />
           ))}
-
-          {/* Overflow hidden chips */}
-          {extraCount > 0 && expanded && (
-            <div className="flex flex-col gap-0.5">
-              {hiddenTabs.map((tab) => (
-                <TabChip
-                  key={tab.url}
-                  url={tab.url}
-                  title={tab.title}
-                  duplicateCount={urlCounts[tab.url] ?? 1}
-                  onFocus={handleFocusTab}
-                  onClose={handleCloseTab}
-                  onSave={handleSaveTab}
-                />
-              ))}
-            </div>
-          )}
         </div>
 
         {/* "+N more" expand button */}
         {extraCount > 0 && (
           <button
             type="button"
-            className="mt-1 flex items-center rounded-chip px-2.5 py-1.5 text-sm text-accent-blue font-body transition-colors duration-150 hover:bg-accent-blue/10 focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
+            className="rounded-chip text-accent-blue font-body hover:bg-accent-blue/10 focus-visible:ring-accent-blue/40 mt-1 flex min-h-11 cursor-pointer items-center px-3 py-1.5 text-sm transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
             onClick={handleExpand}
             aria-expanded={expanded}
             aria-label={
@@ -258,10 +266,10 @@ export function DomainCard({
         )}
 
         {/* Footer actions */}
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-border-light dark:border-border-dark pt-3">
+        <div className="border-border-light dark:border-border-dark mt-3 flex flex-wrap gap-2 border-t pt-3">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-chip px-3 py-1.5 text-sm text-text-secondary font-body transition-colors duration-150 hover:bg-surface-light hover:text-accent-red dark:hover:bg-surface-dark focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
+            className="rounded-chip text-text-secondary font-body hover:bg-surface-light hover:text-accent-red dark:hover:bg-surface-dark focus-visible:ring-accent-blue/40 inline-flex min-h-11 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
             onClick={handleCloseDomain}
           >
             <CloseAllIcon />
@@ -271,7 +279,7 @@ export function DomainCard({
           {hasDupes && (
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-chip px-3 py-1.5 text-sm text-text-secondary font-body transition-colors duration-150 hover:bg-accent-amber/10 hover:text-accent-amber focus-visible:ring-2 focus-visible:ring-accent-blue/40 focus-visible:outline-none cursor-pointer"
+              className="rounded-chip text-text-secondary font-body hover:bg-accent-amber/10 hover:text-accent-amber focus-visible:ring-accent-blue/40 inline-flex min-h-11 cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm transition-colors duration-150 focus-visible:ring-2 focus-visible:outline-none"
               onClick={handleCloseDuplicates}
             >
               <DedupIcon />

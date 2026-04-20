@@ -9,6 +9,51 @@ interface KeyboardActions {
   onArrowUp: () => void;
   onArrowDown: () => void;
   onEnter: () => void;
+  onDClose: () => void;
+  onDSave: () => void;
+}
+
+function getTargetElement(target: EventTarget | null): HTMLElement | null {
+  return target instanceof HTMLElement ? target : null;
+}
+
+function isInputField(target: HTMLElement | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target?.isContentEditable === true
+  );
+}
+
+function isTabChipElement(target: HTMLElement | null): boolean {
+  return Boolean(target?.closest('[data-tab-url]'));
+}
+
+function isBlockedInteractiveElement(target: HTMLElement | null): boolean {
+  if (!target) {
+    return false;
+  }
+
+  const interactiveSelector = [
+    'button',
+    'a[href]',
+    'input',
+    'select',
+    'textarea',
+    'summary',
+    '[role="button"]',
+    '[role="link"]',
+    '[role="switch"]',
+    '[role="checkbox"]',
+    '[role="radio"]',
+    '[role="tab"]',
+  ].join(', ');
+
+  return Boolean(target.closest(interactiveSelector)) && !isTabChipElement(target);
+}
+
+function isInsideDialog(target: HTMLElement | null): boolean {
+  return Boolean(target?.closest('[role="dialog"][aria-modal="true"]'));
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────
@@ -38,11 +83,14 @@ export function useKeyboard(actions: KeyboardActions): void {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
-      const target = e.target as HTMLElement | null;
-      const isInputField =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable === true;
+      const target = getTargetElement(e.target);
+      const targetIsInput = isInputField(target);
+      const targetIsTabChip = isTabChipElement(target);
+      const targetIsBlockedInteractive = isBlockedInteractiveElement(target);
+
+      if (isInsideDialog(target)) {
+        return;
+      }
 
       // Cmd/Ctrl + K -> onSearch
       if (isMod && e.key === 'k') {
@@ -59,7 +107,7 @@ export function useKeyboard(actions: KeyboardActions): void {
       }
 
       // / -> onSearch (only when not typing in an input field)
-      if (e.key === '/' && !isInputField) {
+      if (e.key === '/' && !targetIsInput && !targetIsBlockedInteractive) {
         e.preventDefault();
         callbackRef.current.onSearch();
         return;
@@ -73,19 +121,37 @@ export function useKeyboard(actions: KeyboardActions): void {
 
       // ArrowUp -> onArrowUp
       if (e.key === 'ArrowUp') {
+        if (targetIsInput || targetIsBlockedInteractive) return;
+        e.preventDefault();
         callbackRef.current.onArrowUp();
         return;
       }
 
       // ArrowDown -> onArrowDown
       if (e.key === 'ArrowDown') {
+        if (targetIsInput || targetIsBlockedInteractive) return;
+        e.preventDefault();
         callbackRef.current.onArrowDown();
         return;
       }
 
       // Enter -> onEnter
       if (e.key === 'Enter') {
+        if (targetIsBlockedInteractive || targetIsTabChip) return;
         callbackRef.current.onEnter();
+        return;
+      }
+
+      // d -> onDClose (only outside input fields)
+      if (e.key === 'd' && !targetIsInput && !targetIsBlockedInteractive) {
+        callbackRef.current.onDClose();
+        return;
+      }
+
+      // s -> onDSave (only outside input fields — Cmd+S still works in inputs)
+      if (e.key === 's' && !targetIsInput && !targetIsBlockedInteractive) {
+        e.preventDefault();
+        callbackRef.current.onDSave();
         return;
       }
     };

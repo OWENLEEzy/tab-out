@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Tab, TabGroup } from '../types';
 import { groupTabsByDomain } from '../lib/tab-grouper';
-import { readStorage, writeGroupOrder } from '../utils/storage';
+import { readGroupOrder, writeGroupOrder } from '../utils/storage';
 import { getHostname, isRealTab, isTabOutPage } from '../utils/url';
 import { getErrorMessage } from '../utils/error';
 
@@ -12,6 +12,8 @@ interface TabActions {
   fetchTabs: () => Promise<void>;
   /** Close a single tab matching the exact URL. */
   closeTabByUrl: (url: string) => Promise<void>;
+  /** Close one exact-match tab for each given URL. */
+  closeOneTabPerUrl: (urls: string[]) => Promise<void>;
   /** Close tabs whose hostname matches any of the given URLs (file:// matched exactly). */
   closeTabsByUrls: (urls: string[]) => Promise<void>;
   /** Close tabs matching exact URLs (used for landing pages). */
@@ -88,15 +90,15 @@ export const useTabStore = create<TabStore>((set) => ({
     try {
       const rawTabs = await chrome.tabs.query({});
       const mapped = rawTabs.map(toAppTab).filter(isRealWebTab);
-      const storage = await readStorage();
-      const groups = groupTabsByDomain(mapped, storage.groupOrder);
+      const groupOrder = await readGroupOrder();
+      const groups = groupTabsByDomain(mapped, groupOrder);
 
       // Prune stale groupOrder entries for domains no longer present
       const currentDomains = new Set(groups.map((g) => g.domain));
-      const staleKeys = Object.keys(storage.groupOrder).filter((d) => !currentDomains.has(d));
+      const staleKeys = Object.keys(groupOrder).filter((d) => !currentDomains.has(d));
       if (staleKeys.length > 0) {
         const cleaned: Record<string, number> = {};
-        for (const [domain, order] of Object.entries(storage.groupOrder)) {
+        for (const [domain, order] of Object.entries(groupOrder)) {
           if (currentDomains.has(domain)) {
             cleaned[domain] = order;
           }
@@ -119,6 +121,22 @@ export const useTabStore = create<TabStore>((set) => ({
     if (match?.id != null) {
       await chrome.tabs.remove(match.id);
     }
+    await useTabStore.getState().fetchTabs();
+  },
+
+  closeOneTabPerUrl: async (urls: string[]) => {
+    if (!urls || urls.length === 0) return;
+
+    const uniqueUrls = [...new Set(urls)];
+    const allTabs = await chrome.tabs.query({});
+    const toClose = uniqueUrls
+      .map((url) => allTabs.find((tab) => tab.url === url)?.id)
+      .filter((id): id is number => id != null);
+
+    if (toClose.length > 0) {
+      await chrome.tabs.remove(toClose);
+    }
+
     await useTabStore.getState().fetchTabs();
   },
 
